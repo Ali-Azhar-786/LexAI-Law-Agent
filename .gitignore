@@ -1,5 +1,43 @@
+# Virtual environment
 myenv/
 venv/
+env/
+.venv/
+
+# Environment variables - NEVER commit
+.env
+.env.local
+.env.*
+
+# Python
 __pycache__/
 *.pyc
-.env
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Vector store files
+faiss_index/
+chroma_db/
+*.pkl
+*.faiss
+
+# Uploaded documents
+uploads/
+*.pdf
+
+# LangSmith
+.langsmith/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

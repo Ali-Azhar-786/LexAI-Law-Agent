@@ -1,13 +1,33 @@
+# LangChain ecosystem
 langchain
 langgraph
 langchain-groq
 langchain-community
 langchain-huggingface
 langsmith
+
+# LLM and Search
+groq
 tavily-python
+
+# Vector store and embeddings
 faiss-cpu
-pypdf
-pydantic
-streamlit
-python-dotenv
 sentence-transformers
+
+# Document parsing
+pypdf
+
+# Backend
+fastapi
+uvicorn[standard]
+python-multipart        # required for file uploads in FastAPI
+
+# Frontend
+streamlit
+
+# Environment and config
+python-dotenv
+pydantic
+
+# Utilities
+uuid

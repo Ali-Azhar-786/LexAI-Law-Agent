@@ -1,7 +1,7 @@
 import os
 import faiss
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from app.core.config import config
 
@@ -9,7 +9,7 @@ from app.core.config import config
 # Initialize embedding model once at module level
 # This avoids reloading the model on every function call
 # ---------------------------------------------------------
-embeddings = HuggingFaceEndpointEmbeddings(
+embeddings = HuggingFaceEmbeddings(
     model_name=config.EMBEDDING_MODEL,
     model_kwargs={"device": "cpu"},
     encode_kwargs={"normalize_embeddings": True},

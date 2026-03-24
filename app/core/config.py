@@ -38,8 +38,8 @@ class Config:
     # ---------------------------------------------------------
     # RAG SETTINGS
     # ---------------------------------------------------------
-    CHUNK_SIZE: int = 1000
-    CHUNK_OVERLAP: int = 150
+    CHUNK_SIZE: int = 1500        # increased from 1000
+    CHUNK_OVERLAP: int = 200      # increased from 150
     RETRIEVAL_TOP_K: int = 4
     CONFIDENCE_THRESHOLD: float = 0.75
 
@@ -59,7 +59,7 @@ class Config:
     # FILE UPLOAD SETTINGS
     # ---------------------------------------------------------
     UPLOAD_DIR: str = "uploads"
-    MAX_FILE_SIZE_MB: int = 10
+    MAX_FILE_SIZE_MB: int = 20           # increased from 10 to 20
     ALLOWED_FILE_TYPES: list = ["application/pdf"]
 
 

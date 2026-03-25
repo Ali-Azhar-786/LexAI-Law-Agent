@@ -36,6 +36,18 @@ class Config:
     LANGCHAIN_PROJECT: str = os.getenv("LANGCHAIN_PROJECT", "lexai-law-agent")
 
     # ---------------------------------------------------------
+    # QDRANT
+    # ---------------------------------------------------------
+    QDRANT_HOST: str = os.getenv("QDRANT_HOST", "")
+    QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", ""))
+    QDRANT_COLLECTION_PREFIX: str = "lexai_session"
+
+    # ---------------------------------------------------------
+    # MEM0
+    # ---------------------------------------------------------
+    MEM0_API_KEY: str = os.getenv("MEM0_API_KEY", "")
+
+    # ---------------------------------------------------------
     # RAG SETTINGS
     # ---------------------------------------------------------
     CHUNK_SIZE: int = 1500

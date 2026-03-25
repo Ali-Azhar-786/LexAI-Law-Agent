@@ -12,19 +12,14 @@ def rag_node(state: AgentState) -> AgentState:
     """
     Retrieves relevant document chunks from the FAISS
     vector store for each sub-question.
-
-    Args:
-        state: Current AgentState.
-
-    Returns:
-        Updated state with retrieved_chunks, retrieval_scores,
-        has_confident_retrieval, and citations populated.
     """
 
     try:
         vector_store = load_vector_store(state["session_id"])
+        print(f"[RAG] Vector store loaded for session: {state['session_id']}")
     except FileNotFoundError:
-        # No vector store found — fall back to web search
+        print(f"[RAG] No vector store found for session: {state['session_id']}")
+        print(f"[RAG] Falling back to web search")
         return {
             **state,
             "retrieved_chunks": [],
@@ -39,10 +34,12 @@ def rag_node(state: AgentState) -> AgentState:
 
     # Retrieve for each sub-question
     for question in state.get("sub_questions", [state["user_query"]]):
+        print(f"[RAG] Retrieving for sub-question: {question}")
         docs, scores = retrieve_with_scores(
             vector_store=vector_store,
             query=question,
         )
+        print(f"[RAG] Retrieved {len(docs)} chunks with scores: {scores}")
         all_chunks.extend(docs)
         all_scores.extend(scores)
 
@@ -52,10 +49,12 @@ def rag_node(state: AgentState) -> AgentState:
         scores=all_scores,
     )
 
+    print(f"[RAG] After filtering: {len(confident_docs)} confident chunks")
     has_confident = len(confident_docs) > 0
 
     # If no confident chunks found fall through to web search
     if not has_confident:
+        print(f"[RAG] No confident chunks found. Falling back to web search.")
         return {
             **state,
             "retrieved_chunks": [doc.page_content for doc in all_chunks],
@@ -65,8 +64,8 @@ def rag_node(state: AgentState) -> AgentState:
             "source_mode": "BOTH",
         }
 
-    # Extract citations from confident chunks
     citations = extract_citations(confident_docs)
+    print(f"[RAG] Citations found: {citations}")
 
     return {
         **state,

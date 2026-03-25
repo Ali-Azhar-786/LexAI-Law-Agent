@@ -10,12 +10,13 @@ def retrieve_with_scores(
 ) -> tuple[list[Document], list[float]]:
     """
     Retrieves the most relevant document chunks for a query
-    along with their similarity scores.
+    using relevance scores normalized between 0 and 1.
+    Higher score means more relevant.
 
     Args:
         vector_store: The FAISS vector store to search.
         query: The search query string.
-        top_k: Number of results to return. Defaults to config value.
+        top_k: Number of results to return.
 
     Returns:
         Tuple of (documents list, scores list) sorted by relevance.
@@ -24,7 +25,11 @@ def retrieve_with_scores(
     if top_k is None:
         top_k = config.RETRIEVAL_TOP_K
 
-    results = vector_store.similarity_search_with_score(
+    # Use similarity_search_with_relevance_scores instead of
+    # similarity_search_with_score.
+    # This returns normalized scores where 1.0 = perfect match
+    # and 0.0 = completely irrelevant — much easier to threshold.
+    results = vector_store.similarity_search_with_relevance_scores(
         query=query,
         k=top_k,
     )
@@ -44,10 +49,13 @@ def filter_by_confidence(
     Filters retrieved chunks to only keep those above
     the confidence threshold.
 
+    With relevance scores, higher is better.
+    Threshold of 0.3 means we keep anything reasonably relevant.
+
     Args:
         documents: List of retrieved documents.
-        scores: Corresponding similarity scores.
-        threshold: Minimum score to keep. Defaults to config value.
+        scores: Corresponding relevance scores (0.0 to 1.0).
+        threshold: Minimum score to keep.
 
     Returns:
         Tuple of (filtered documents, filtered scores).
@@ -71,14 +79,13 @@ def filter_by_confidence(
 
 def extract_citations(documents: list[Document]) -> list[str]:
     """
-    Extracts article and section references from retrieved chunks
-    to use as citations in the final response.
+    Extracts article and section references from retrieved chunks.
 
     Args:
         documents: List of retrieved Document chunks.
 
     Returns:
-        List of citation strings found in the chunks.
+        List of unique citation strings found in the chunks.
     """
 
     import re

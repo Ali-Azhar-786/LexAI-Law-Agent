@@ -18,75 +18,71 @@ from app.graph.nodes.stakes_assessor import (
     route_after_stakes,
 )
 from app.graph.nodes.hitl_node import hitl_node
+from app.memory.long_term import save_to_ltm, load_from_ltm
+from app.memory.short_term import add_to_stm
 
 
 def memory_update_node(state: AgentState) -> AgentState:
     """
-    Final node in every execution path.
-    Assembles the final response and updates STM.
-    LTM persistence is handled separately via checkpointer.
-
-    Args:
-        state: Current AgentState.
-
-    Returns:
-        Updated state with final_response assembled.
+    Final node. Assembles final response, updates STM,
+    saves key information to Mem0 LTM.
     """
 
-    # If final_response already set by fallback or hitl use it
+    # Assemble final response if not already set
     if state.get("final_response"):
         final_response = state["final_response"]
     else:
-        # Assemble final response from generated answer
         parts = []
 
-        # Main answer
         if state.get("generated_answer"):
             parts.append(state["generated_answer"])
 
-        # Citations
         citations = state.get("citations", [])
         if citations:
             cited = ", ".join(citations)
             parts.append(f"\n📌 **Referenced:** {cited}")
 
-        # Staleness warning
         if state.get("staleness_warning"):
             parts.append(
                 "\n⚠️ **Document Freshness Warning:** "
                 "Your uploaded document may be outdated. "
-                f"Recent amendments may exist: "
                 f"{state.get('amendment_summary', '')}"
             )
 
-        # Parametric knowledge flag
         if state.get("parametric_knowledge_used"):
             parts.append(
                 "\n🔍 **Note:** Parts of this answer are based on "
-                "general training knowledge. "
-                "Please verify against official sources."
+                "general training knowledge. Please verify against "
+                "official sources."
             )
 
         final_response = "\n".join(parts)
 
-    # Update STM with current exchange
+    # Update STM
     stm = state.get("stm", [])
-    stm.append({
+    stm = add_to_stm(stm, {
         "query": state.get("user_query"),
-        "response": final_response,
+        "response": final_response[:500],
         "jurisdiction": state.get("jurisdiction"),
         "matter_type": state.get("matter_type"),
         "confidence": state.get("confidence"),
     })
 
-    # Update LTM profile
-    ltm_profile = state.get("ltm_profile", {})
-    ltm_profile["jurisdiction"] = state.get("jurisdiction")
-    ltm_profile["last_matter_type"] = state.get("matter_type")
-    ltm_profile["last_user_role"] = state.get("user_role")
-    if state.get("uploaded_doc_path"):
-        ltm_profile["last_doc_path"] = state.get("uploaded_doc_path")
-        ltm_profile["last_doc_date"] = state.get("doc_date")
+    # Update LTM via Mem0
+    ltm_data = {
+        "jurisdiction": state.get("jurisdiction"),
+        "last_matter_type": state.get("matter_type"),
+        "last_user_role": state.get("user_role"),
+        "last_doc_path": state.get("uploaded_doc_path"),
+        "last_doc_date": state.get("doc_date"),
+    }
+    save_to_ltm(
+        user_id=state["session_id"],
+        data=ltm_data,
+    )
+
+    # Update LTM profile in state
+    ltm_profile = load_from_ltm(state["session_id"])
 
     return {
         **state,
@@ -94,7 +90,6 @@ def memory_update_node(state: AgentState) -> AgentState:
         "stm": stm,
         "ltm_profile": ltm_profile,
     }
-
 
 def build_graph() -> StateGraph:
     """

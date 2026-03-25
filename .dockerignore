@@ -1,0 +1,12 @@
+myenv/
+venv/
+__pycache__/
+*.pyc
+.env
+faiss_index/
+qdrant_storage/
+uploads/
+.git/
+.vscode/
+tests/
+*.md

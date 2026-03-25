@@ -41,3 +41,9 @@ uploads/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Docker
+.dockerignore
+
+# Qdrant local data
+qdrant_storage/

@@ -38,10 +38,10 @@ class Config:
     # ---------------------------------------------------------
     # RAG SETTINGS
     # ---------------------------------------------------------
-    CHUNK_SIZE: int = 1500        # increased from 1000
-    CHUNK_OVERLAP: int = 200      # increased from 150
+    CHUNK_SIZE: int = 1500
+    CHUNK_OVERLAP: int = 200
     RETRIEVAL_TOP_K: int = 4
-    CONFIDENCE_THRESHOLD: float = 0.75
+    CONFIDENCE_THRESHOLD: float = 0.30      # lowered from 0.75
 
     # ---------------------------------------------------------
     # FASTAPI SETTINGS

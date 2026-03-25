@@ -31,3 +31,10 @@ pydantic
 
 # Utilities
 uuid
+
+# Vector store
+qdrant-client
+langchain-qdrant
+
+# Memory
+mem0ai

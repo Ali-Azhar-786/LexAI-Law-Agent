@@ -1,79 +1,120 @@
-import os
-from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_qdrant import QdrantVectorStore
 from langchain_core.documents import Document
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams
 from app.core.config import config
 
 # ---------------------------------------------------------
-# Initialize embedding model once at module level
+# Embedding model — initialized once at module level
 # ---------------------------------------------------------
 embeddings = HuggingFaceEmbeddings(
     model_name=config.EMBEDDING_MODEL,
     model_kwargs={"device": "cpu"},
     encode_kwargs={
         "normalize_embeddings": True,
-        "batch_size": 64,            # embed 64 chunks at once instead of 1
+        "batch_size": 64,
     },
 )
 
+# ---------------------------------------------------------
+# Qdrant client — connects to running Qdrant container
+# ---------------------------------------------------------
+qdrant_client = QdrantClient(
+    host=config.QDRANT_HOST,
+    port=config.QDRANT_PORT,
+)
 
-def create_vector_store(chunks: list[Document]) -> FAISS:
+# Embedding dimension for all-MiniLM-L6-v2
+EMBEDDING_DIM = 384
+
+
+def get_collection_name(session_id: str) -> str:
     """
-    Takes a list of document chunks and creates a FAISS
-    vector store by embedding each chunk in batches.
+    Returns the Qdrant collection name for a given session.
+    Each session gets its own isolated collection.
+    """
+    return f"{config.QDRANT_COLLECTION_PREFIX}_{session_id}"
+
+
+def create_vector_store(
+    chunks: list[Document],
+    session_id: str,
+) -> QdrantVectorStore:
+    """
+    Creates a Qdrant collection for the session and
+    indexes all document chunks into it.
 
     Args:
         chunks: List of Document chunks from chunker.py
+        session_id: Unique session identifier.
 
     Returns:
-        FAISS vector store loaded in memory.
+        QdrantVectorStore instance ready for retrieval.
     """
 
-    # Process in batches to avoid memory issues on large documents
-    batch_size = 100
-    vector_store = None
+    collection_name = get_collection_name(session_id)
 
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i: i + batch_size]
+    # Delete existing collection for this session if it exists
+    existing = [
+        c.name for c in qdrant_client.get_collections().collections
+    ]
+    if collection_name in existing:
+        qdrant_client.delete_collection(collection_name)
 
-        if vector_store is None:
-            # Create vector store from first batch
-            vector_store = FAISS.from_documents(
-                documents=batch,
-                embedding=embeddings,
-            )
-        else:
-            # Add subsequent batches to existing store
-            vector_store.add_documents(batch)
+    # Create fresh collection
+    qdrant_client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(
+            size=EMBEDDING_DIM,
+            distance=Distance.COSINE,
+        ),
+    )
+
+    # Index chunks in batches
+    vector_store = QdrantVectorStore.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        collection_name=collection_name,
+        url=f"http://{config.QDRANT_HOST}:{config.QDRANT_PORT}",
+    )
+
+    print(f"[QDRANT] Indexed {len(chunks)} chunks "
+          f"into collection: {collection_name}")
 
     return vector_store
 
 
-def save_vector_store(vector_store: FAISS, session_id: str) -> str:
+def load_vector_store(session_id: str) -> QdrantVectorStore:
     """
-    Saves the FAISS vector store to disk for the given session.
-    """
-    save_path = os.path.join("faiss_index", session_id)
-    os.makedirs(save_path, exist_ok=True)
-    vector_store.save_local(save_path)
-    return save_path
+    Loads an existing Qdrant collection for the given session.
 
+    Args:
+        session_id: Unique session identifier.
 
-def load_vector_store(session_id: str) -> FAISS:
-    """
-    Loads a previously saved FAISS vector store from disk.
-    """
-    load_path = os.path.join("faiss_index", session_id)
+    Returns:
+        QdrantVectorStore instance ready for retrieval.
 
-    if not os.path.exists(load_path):
+    Raises:
+        FileNotFoundError: If no collection exists for this session.
+    """
+
+    collection_name = get_collection_name(session_id)
+
+    existing = [
+        c.name for c in qdrant_client.get_collections().collections
+    ]
+
+    if collection_name not in existing:
         raise FileNotFoundError(
-            f"No vector store found for session: {session_id}"
+            f"No Qdrant collection found for session: {session_id}"
         )
 
-    vector_store = FAISS.load_local(
-        load_path,
-        embeddings,
-        allow_dangerous_deserialization=True,
+    vector_store = QdrantVectorStore(
+        client=qdrant_client,
+        collection_name=collection_name,
+        embedding=embeddings,
     )
 
+    print(f"[QDRANT] Loaded collection: {collection_name}")
     return vector_store

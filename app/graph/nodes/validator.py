@@ -18,29 +18,37 @@ LEGAL_SIGNALS = [
     r"\bprovision\b",
     r"\bfundamental rights\b",
     r"\bjurisdiction\b",
+    r"\bpreamble\b",
+    r"\brepublic\b",
+    r"\bparliament\b",
+    r"\bgovernment\b",
+    r"\bcourt\b",
+    r"\bjudiciary\b",
+    r"\blegislature\b",
+    r"\bexecutive\b",
 ]
 
 
 def validate_legal_document(text: str) -> bool:
     """
-    Checks whether the document text contains enough
-    legal signals to be considered a valid legal document.
+    Checks whether document text contains legal signals.
+    Requires at least 2 matches from the signal list.
+    Threshold lowered from 3 to 2 for robustness.
     """
     text_lower = text.lower()
     matches = sum(
         1 for pattern in LEGAL_SIGNALS
         if re.search(pattern, text_lower)
     )
-    return matches >= 3
+    print(f"[VALIDATOR] Legal signals found: {matches}")
+    return matches >= 2
 
 
 def validator_node(state: AgentState) -> AgentState:
     """
-    Validates the uploaded document, extracts its date,
-    chunks it, and indexes it into Qdrant.
+    Validates uploaded document and indexes into Qdrant.
     """
 
-    # No document uploaded — skip
     if not state.get("uploaded_doc_path"):
         print("[VALIDATOR] No document path in state — skipping")
         return {
@@ -51,9 +59,8 @@ def validator_node(state: AgentState) -> AgentState:
 
     file_path = state["uploaded_doc_path"]
 
-    # Check file exists on disk
     if not os.path.exists(file_path):
-        print(f"[VALIDATOR] File not found on disk: {file_path}")
+        print(f"[VALIDATOR] File not found: {file_path}")
         return {
             **state,
             "doc_validated": False,
@@ -65,7 +72,7 @@ def validator_node(state: AgentState) -> AgentState:
         documents = load_pdf(file_path)
 
         if not documents:
-            print("[VALIDATOR] No pages extracted from PDF")
+            print("[VALIDATOR] No pages extracted")
             return {
                 **state,
                 "doc_validated": False,
@@ -74,35 +81,32 @@ def validator_node(state: AgentState) -> AgentState:
 
         print(f"[VALIDATOR] Loaded {len(documents)} pages")
 
-        # Validate using first two pages
+        # Check first 5 pages instead of 2
+        # Table of contents pages may not have enough signals
+        pages_to_check = min(5, len(documents))
         sample_text = " ".join(
-            doc.page_content for doc in documents[:2]
+            doc.page_content for doc in documents[:pages_to_check]
         )
+
         is_valid = validate_legal_document(sample_text)
-        print(f"[VALIDATOR] Legal document check: {is_valid}")
+        print(f"[VALIDATOR] Validation result: {is_valid}")
 
         if not is_valid:
-            print("[VALIDATOR] Document failed legal signal check")
+            print("[VALIDATOR] Failed legal signal check")
             return {
                 **state,
                 "doc_validated": False,
                 "doc_date": None,
             }
 
-        # Extract document date
         doc_date = extract_doc_date(file_path)
         print(f"[VALIDATOR] Document date: {doc_date}")
 
-        # Chunk documents
         chunks = chunk_documents(documents)
         print(f"[VALIDATOR] Created {len(chunks)} chunks")
 
-        # ✅ FIXED: create_vector_store now takes session_id
-        # and handles Qdrant indexing internally
-        # No separate save_vector_store call needed
         create_vector_store(chunks, state["session_id"])
-        print(f"[VALIDATOR] Indexed into Qdrant for "
-              f"session: {state['session_id']}")
+        print(f"[VALIDATOR] Indexed into Qdrant: {state['session_id']}")
 
         return {
             **state,
@@ -111,8 +115,9 @@ def validator_node(state: AgentState) -> AgentState:
         }
 
     except Exception as e:
-        # ✅ Now prints the REAL error instead of silently failing
         print(f"[VALIDATOR] ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             **state,
             "doc_validated": False,

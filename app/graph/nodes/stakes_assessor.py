@@ -1,23 +1,51 @@
 from app.graph.state import AgentState
 
+# Matter types that are inherently high stakes
 HIGH_STAKES_MATTER_TYPES = {
-    "criminal", "custody", "deportation",
-    "property", "constitutional",
+    "criminal",
+    "custody",
+    "deportation",
 }
 
-HIGH_STAKES_KEYWORDS = [
-    "arrested", "charged", "imprisoned", "jail", "prison",
-    "custody", "child", "divorce", "deportation", "eviction",
-    "fired", "terminated", "sued", "lawsuit", "court",
-    "warrant", "sentence", "penalty", "fine", "compensation",
-    "rights violated", "illegal", "unlawful",
+# Keywords that signal the user is PERSONALLY involved
+# and facing immediate consequences — not just asking academically
+PERSONAL_URGENCY_KEYWORDS = [
+    "i have been arrested",
+    "i was arrested",
+    "i am arrested",
+    "i have been charged",
+    "i was charged",
+    "i am accused",
+    "i have been accused",
+    "they are suing me",
+    "i am being sued",
+    "i received a court notice",
+    "i got a court notice",
+    "i am in custody",
+    "i have been detained",
+    "i was detained",
+    "my child was taken",
+    "i am facing deportation",
+    "i have been fired",
+    "my property was seized",
+    "i need a lawyer",
+    "i need legal help urgently",
+    "what should i do now",
+    "what do i do now",
+    "i am in trouble",
 ]
 
 
 def stakes_assessor_node(state: AgentState) -> AgentState:
     """
-    Determines whether the user's situation is high stakes
-    based on matter type and keywords in the query.
+    Determines whether the situation is genuinely high stakes.
+
+    Requires BOTH a high stakes matter type AND personal
+    urgency signals in the query.
+
+    Simple informational queries like "what is the punishment
+    for theft" are NOT high stakes — the user is asking
+    academically, not because they are personally accused.
 
     Args:
         state: Current AgentState.
@@ -35,13 +63,20 @@ def stakes_assessor_node(state: AgentState) -> AgentState:
         for t in HIGH_STAKES_MATTER_TYPES
     )
 
-    # Check query keywords
-    keyword_is_high_stakes = any(
+    # Check for personal urgency — user must be personally
+    # involved and facing immediate consequences
+    personally_involved = any(
         keyword in query
-        for keyword in HIGH_STAKES_KEYWORDS
+        for keyword in PERSONAL_URGENCY_KEYWORDS
     )
 
-    is_high_stakes = type_is_high_stakes or keyword_is_high_stakes
+    # BOTH conditions must be true for escalation
+    # This prevents academic queries from triggering HITL
+    is_high_stakes = type_is_high_stakes and personally_involved
+
+    print(f"[STAKES] Matter type high stakes: {type_is_high_stakes}")
+    print(f"[STAKES] Personally involved: {personally_involved}")
+    print(f"[STAKES] Final decision: {is_high_stakes}")
 
     return {
         **state,
@@ -52,13 +87,7 @@ def stakes_assessor_node(state: AgentState) -> AgentState:
 def route_after_stakes(state: AgentState) -> str:
     """
     Conditional edge after stakes assessor.
-
-    Returns:
-        "hitl_node" if high stakes
-        "memory_update_node" if not high stakes
     """
-
     if state.get("is_high_stakes"):
         return "hitl_node"
-
     return "memory_update_node"

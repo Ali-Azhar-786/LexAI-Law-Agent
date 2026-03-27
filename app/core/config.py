@@ -39,7 +39,7 @@ class Config:
     # QDRANT
     # ---------------------------------------------------------
     QDRANT_HOST: str = os.getenv("QDRANT_HOST", "")
-    QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", ""))
+    QDRANT_PORT: int = int(os.getenv("QDRANT_PORT", "6333"))
     QDRANT_COLLECTION_PREFIX: str = "lexai_session"
 
     # ---------------------------------------------------------

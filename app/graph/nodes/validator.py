@@ -1,13 +1,10 @@
 import os
 import re
-from pypdf import PdfReader
-from langchain_core.documents import Document
 from app.graph.state import AgentState
 from app.rag.document_loader import load_pdf, extract_doc_date
 from app.rag.chunker import chunk_documents
-from app.rag.embedder import create_vector_store, save_vector_store
+from app.rag.embedder import create_vector_store
 
-# Legal document signals — presence of these suggests a valid legal document
 LEGAL_SIGNALS = [
     r"\barticle\s+\d+",
     r"\bsection\s+\d+",
@@ -28,41 +25,24 @@ def validate_legal_document(text: str) -> bool:
     """
     Checks whether the document text contains enough
     legal signals to be considered a valid legal document.
-
-    Args:
-        text: Raw text extracted from the document.
-
-    Returns:
-        True if document appears to be a legal document.
     """
-
     text_lower = text.lower()
     matches = sum(
         1 for pattern in LEGAL_SIGNALS
         if re.search(pattern, text_lower)
     )
-
-    # Require at least 3 legal signals
     return matches >= 3
 
 
 def validator_node(state: AgentState) -> AgentState:
     """
     Validates the uploaded document, extracts its date,
-    chunks it, embeds it, and saves to FAISS vector store.
-
-    If no document is uploaded this node is skipped.
-
-    Args:
-        state: Current AgentState.
-
-    Returns:
-        Updated state with doc_validated, doc_date set.
-        Vector store saved to disk under session_id.
+    chunks it, and indexes it into Qdrant.
     """
 
-    # No document uploaded — skip validation
+    # No document uploaded — skip
     if not state.get("uploaded_doc_path"):
+        print("[VALIDATOR] No document path in state — skipping")
         return {
             **state,
             "doc_validated": False,
@@ -71,8 +51,9 @@ def validator_node(state: AgentState) -> AgentState:
 
     file_path = state["uploaded_doc_path"]
 
-    # Check file exists
+    # Check file exists on disk
     if not os.path.exists(file_path):
+        print(f"[VALIDATOR] File not found on disk: {file_path}")
         return {
             **state,
             "doc_validated": False,
@@ -80,25 +61,28 @@ def validator_node(state: AgentState) -> AgentState:
         }
 
     try:
-        # Load document pages
+        print(f"[VALIDATOR] Loading PDF: {file_path}")
         documents = load_pdf(file_path)
 
         if not documents:
+            print("[VALIDATOR] No pages extracted from PDF")
             return {
                 **state,
                 "doc_validated": False,
                 "doc_date": None,
             }
 
-        # Combine first two pages for validation check
+        print(f"[VALIDATOR] Loaded {len(documents)} pages")
+
+        # Validate using first two pages
         sample_text = " ".join(
             doc.page_content for doc in documents[:2]
         )
-
-        # Validate it looks like a legal document
         is_valid = validate_legal_document(sample_text)
+        print(f"[VALIDATOR] Legal document check: {is_valid}")
 
         if not is_valid:
+            print("[VALIDATOR] Document failed legal signal check")
             return {
                 **state,
                 "doc_validated": False,
@@ -107,13 +91,18 @@ def validator_node(state: AgentState) -> AgentState:
 
         # Extract document date
         doc_date = extract_doc_date(file_path)
+        print(f"[VALIDATOR] Document date: {doc_date}")
 
-        # Chunk and embed
+        # Chunk documents
         chunks = chunk_documents(documents)
-        vector_store = create_vector_store(chunks)
+        print(f"[VALIDATOR] Created {len(chunks)} chunks")
 
-        # Save vector store under session_id
-        save_vector_store(vector_store, state["session_id"])
+        # ✅ FIXED: create_vector_store now takes session_id
+        # and handles Qdrant indexing internally
+        # No separate save_vector_store call needed
+        create_vector_store(chunks, state["session_id"])
+        print(f"[VALIDATOR] Indexed into Qdrant for "
+              f"session: {state['session_id']}")
 
         return {
             **state,
@@ -122,7 +111,8 @@ def validator_node(state: AgentState) -> AgentState:
         }
 
     except Exception as e:
-        print(f"Document validation error: {e}")
+        # ✅ Now prints the REAL error instead of silently failing
+        print(f"[VALIDATOR] ERROR: {type(e).__name__}: {e}")
         return {
             **state,
             "doc_validated": False,

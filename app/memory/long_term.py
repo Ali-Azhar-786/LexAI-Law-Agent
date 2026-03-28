@@ -5,88 +5,69 @@ mem0_client = MemoryClient(api_key=config.MEM0_API_KEY)
 
 
 def save_to_ltm(user_id: str, data: dict) -> None:
-    """
-    Saves memory entries to Mem0 LTM.
-    """
+    if not mem0_client:
+        return
 
     messages = []
 
-    if data.get("jurisdiction"):
+    if data.get("jurisdiction") not in (None, "", "unspecified"):
         messages.append({
             "role": "user",
             "content": f"I am from {data['jurisdiction']}",
         })
 
-    if data.get("last_matter_type"):
+    if data.get("last_matter_type") not in (None, "", "unspecified"):
         messages.append({
             "role": "user",
-            "content": (
-                f"I had a {data['last_matter_type']} legal matter"
-            ),
+            "content": f"I had a {data['last_matter_type']} legal matter",
         })
 
-    if data.get("last_user_role"):
+    if data.get("last_user_role") not in (None, "", "unspecified"):
         messages.append({
             "role": "user",
             "content": f"My role was {data['last_user_role']}",
         })
 
-    if data.get("last_doc_path"):
-        messages.append({
-            "role": "user",
-            "content": (
-                f"I uploaded a legal document dated "
-                f"{data.get('last_doc_date', 'unknown date')}"
-            ),
-        })
-
     if not messages:
-        print("[MEM0] No data to save — skipping")
         return
 
     try:
-        mem0_client.add(
-            messages,
-            user_id=user_id,
-            output_format="v1.1",   # required by updated API
-        )
+        # v1.0.7 requires keyword argument
+        mem0_client.add(messages=messages, user_id=user_id)
         print(f"[MEM0] Saved {len(messages)} memories for {user_id}")
     except Exception as e:
-        print(f"[MEM0] Save error: {e}")
+        print(f"[MEM0] Save error (non-fatal): {e}")
 
 
 def load_from_ltm(user_id: str) -> dict:
-    """
-    Loads memories for a user from Mem0.
-    Uses filters parameter required by updated API.
-    """
+    if not mem0_client:
+        return {}
 
     try:
-        # Updated API requires filters
-        memories = mem0_client.get_all(
-            user_id=user_id,
-            output_format="v1.1",
-        )
+        memories = mem0_client.get_all(user_id=user_id)
+
+        if not memories:
+            return {}
+
+        # v1.0.7 returns list directly
+        if isinstance(memories, dict):
+            memories = memories.get("results", [])
 
         profile = {}
-
         for memory in memories:
             text = memory.get("memory", "").lower()
-
             if "from" in text:
                 profile["jurisdiction"] = memory.get("memory")
             if "matter" in text:
                 profile["last_matter_type"] = memory.get("memory")
             if "role" in text:
                 profile["last_user_role"] = memory.get("memory")
-            if "document" in text:
-                profile["last_doc_info"] = memory.get("memory")
 
         print(f"[MEM0] Loaded {len(memories)} memories for {user_id}")
         return profile
 
     except Exception as e:
-        print(f"[MEM0] Load error: {e}")
+        print(f"[MEM0] Load error (non-fatal): {e}")
         return {}
 
 

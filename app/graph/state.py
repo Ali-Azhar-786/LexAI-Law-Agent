@@ -44,6 +44,7 @@ class AgentState(TypedDict):
     has_confident_retrieval: bool
     web_search_results: List[str]
 
+
     # ---------------------------------------------------------
     # FRESHNESS CHECK
     # Populated by Freshness Check node
@@ -80,6 +81,12 @@ class AgentState(TypedDict):
     # ---------------------------------------------------------
     fallback_triggered: bool
     parametric_knowledge_used: bool
+
+    # ---------------------------------------------------------
+    # RAG FALLBACK FLAG
+    # Set when RAG path falls back to web search
+    # ---------------------------------------------------------
+    rag_fallback_to_web: bool
 
     # ---------------------------------------------------------
     # MEMORY

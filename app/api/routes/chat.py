@@ -63,6 +63,7 @@ def build_initial_state(request: ChatRequest) -> dict:
         # Fallback
         "fallback_triggered": False,
         "parametric_knowledge_used": False,
+        "rag_fallback_to_web": False,
 
         # Memory
         "session_id": request.session_id,

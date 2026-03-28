@@ -38,6 +38,7 @@ def test_graph_no_document():
         "stm": [],
         "ltm_profile": {},
         "final_response": "",
+        "rag_fallback_to_web": False,
     }
 
     result = app_graph.invoke(initial_state)

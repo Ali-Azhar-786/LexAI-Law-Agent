@@ -9,23 +9,20 @@ llm = ChatGroq(
     temperature=0,
 )
 
-answer_prompt = ChatPromptTemplate.from_messages([
+rag_answer_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
         """You are an expert legal assistant helping a citizen understand their rights.
 
-Your job is to answer the user's legal question using ONLY the provided context.
+You are answering based on an uploaded legal document provided by the user.
 
-Rules:
-- Base your answer strictly on the provided context
-- Cite specific articles, sections, or clauses when available
-- Use plain language that a non-lawyer can understand
-- Be thorough but concise
-- If the context is insufficient to fully answer the question
-  state clearly which parts you could not find information for
-- Do NOT make up laws or cite non-existent articles
-- If you use any knowledge beyond the provided context
-  explicitly label it as: [General Knowledge - Verify Independently]
+STRICT RULES:
+- Use ONLY the provided document context to answer
+- Do NOT use your general knowledge
+- Cite specific Articles, Sections, or Clauses from the document
+- If the exact answer is not in the context say clearly that
+  the document does not contain this information
+- Use plain language a non-lawyer can understand
 
 Jurisdiction: {jurisdiction}
 User Role: {user_role}
@@ -35,58 +32,111 @@ Matter Type: {matter_type}"""
         "human",
         """Question: {user_query}
 
-Context:
+Document Context:
 {context}
 
-Please provide a clear, cited answer."""
+Provide a clear answer citing specific articles from the document."""
     ),
 ])
 
-answer_chain = answer_prompt | llm
+web_answer_prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """You are an expert legal assistant helping a citizen understand their rights.
+
+You are answering based on web search results.
+
+RULES:
+- Base your answer on the provided web search results
+- Cite the source URLs when referencing specific information
+- Use plain language a non-lawyer can understand
+- If information is insufficient say so clearly
+
+Jurisdiction: {jurisdiction}
+User Role: {user_role}
+Matter Type: {matter_type}"""
+    ),
+    (
+        "human",
+        """Question: {user_query}
+
+Web Search Results:
+{context}
+
+Provide a clear answer based on the search results."""
+    ),
+])
+
+# Prompt used when RAG fell back to web
+rag_fallback_prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """You are an expert legal assistant helping a citizen understand their rights.
+
+The user uploaded a legal document but the specific answer to their 
+question was not found in that document. You are now answering 
+based on web search results.
+
+RULES:
+- Start your answer with this exact line:
+  "📄 Note: The uploaded document does not contain specific 
+   information about this query. The following answer is based 
+   on web search results."
+- Then provide a clear answer based on the web search results
+- Cite the source URLs when referencing specific information
+- Use plain language a non-lawyer can understand
+
+Jurisdiction: {jurisdiction}
+User Role: {user_role}
+Matter Type: {matter_type}"""
+    ),
+    (
+        "human",
+        """Question: {user_query}
+
+Web Search Results:
+{context}
+
+Provide a clear answer based on the search results."""
+    ),
+])
+
+rag_chain = rag_answer_prompt | llm
+web_chain = web_answer_prompt | llm
+fallback_chain = rag_fallback_prompt | llm
 
 
 def build_context(state: AgentState) -> str:
     """
-    Builds the context string from retrieved chunks
-    or web search results depending on source mode.
+    Builds context string based on source mode.
     """
 
     source_mode = state.get("source_mode", "WEB")
-    context_parts = []
 
-    if source_mode in ("RAG", "BOTH"):
+    if source_mode == "RAG":
         chunks = state.get("retrieved_chunks", [])
-        if chunks:
-            context_parts.append(
-                "--- From Uploaded Document ---\n" +
-                "\n\n".join(chunks)
-            )
+        return "\n\n---\n\n".join(chunks) if chunks else ""
 
-    if source_mode in ("WEB", "BOTH"):
-        web_results = state.get("web_search_results", [])
-        if web_results:
-            context_parts.append(
-                "--- From Web Search ---\n" +
-                "\n\n".join(web_results)
-            )
-
-    return "\n\n".join(context_parts) if context_parts else ""
+    # WEB or BOTH — use web results
+    web_results = state.get("web_search_results", [])
+    return "\n\n".join(web_results) if web_results else ""
 
 
 def answer_generator_node(state: AgentState) -> AgentState:
     """
-    Generates a grounded legal answer using retrieved context.
-
-    Args:
-        state: Current AgentState.
-
-    Returns:
-        Updated state with generated_answer populated.
+    Generates a grounded legal answer.
+    Selects the correct prompt based on source mode
+    and whether RAG fell back to web.
     """
 
     context = build_context(state)
+    source_mode = state.get("source_mode", "WEB")
+    rag_fallback = state.get("rag_fallback_to_web", False)
 
-    # If no context at all trigger fallback
+    print(f"[ANSWER] Source mode: {source_mode}")
+    print(f"[ANSWER] RAG fallback to web: {rag_fallback}")
+    print(f"[ANSWER] Context length: {len(context)} chars")
+
     if not context.strip():
         return {
             **state,
@@ -94,7 +144,15 @@ def answer_generator_node(state: AgentState) -> AgentState:
             "fallback_triggered": True,
         }
 
-    response = answer_chain.invoke({
+    # Select correct chain
+    if rag_fallback:
+        chain = fallback_chain
+    elif source_mode == "RAG":
+        chain = rag_chain
+    else:
+        chain = web_chain
+
+    response = chain.invoke({
         "user_query": state["user_query"],
         "context": context,
         "jurisdiction": state.get("jurisdiction", "unspecified"),
@@ -106,4 +164,5 @@ def answer_generator_node(state: AgentState) -> AgentState:
         **state,
         "generated_answer": response.content.strip(),
         "fallback_triggered": False,
+        "parametric_knowledge_used": False,
     }

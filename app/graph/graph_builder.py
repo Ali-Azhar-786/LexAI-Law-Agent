@@ -5,7 +5,10 @@ from app.graph.nodes.validator import validator_node
 from app.graph.nodes.decomposer import decomposer_node
 from app.graph.nodes.router import router_node, route_after_router
 from app.graph.nodes.rag_node import rag_node
-from app.graph.nodes.web_search_node import web_search_node
+from app.graph.nodes.web_search_node import (
+    web_search_node,
+    web_search_fallback_node,
+)
 from app.graph.nodes.freshness_check import freshness_check_node
 from app.graph.nodes.answer_generator import answer_generator_node
 from app.graph.nodes.grounding_check import (
@@ -28,7 +31,6 @@ def memory_update_node(state: AgentState) -> AgentState:
     saves key information to Mem0 LTM.
     """
 
-    # Assemble final response if not already set
     if state.get("final_response"):
         final_response = state["final_response"]
     else:
@@ -58,7 +60,6 @@ def memory_update_node(state: AgentState) -> AgentState:
 
         final_response = "\n".join(parts)
 
-    # Update STM
     stm = state.get("stm", [])
     stm = add_to_stm(stm, {
         "query": state.get("user_query"),
@@ -68,7 +69,6 @@ def memory_update_node(state: AgentState) -> AgentState:
         "confidence": state.get("confidence"),
     })
 
-    # Update LTM via Mem0
     ltm_data = {
         "jurisdiction": state.get("jurisdiction"),
         "last_matter_type": state.get("matter_type"),
@@ -76,12 +76,7 @@ def memory_update_node(state: AgentState) -> AgentState:
         "last_doc_path": state.get("uploaded_doc_path"),
         "last_doc_date": state.get("doc_date"),
     }
-    save_to_ltm(
-        user_id=state["session_id"],
-        data=ltm_data,
-    )
-
-    # Update LTM profile in state
+    save_to_ltm(user_id=state["session_id"], data=ltm_data)
     ltm_profile = load_from_ltm(state["session_id"])
 
     return {
@@ -90,6 +85,7 @@ def memory_update_node(state: AgentState) -> AgentState:
         "stm": stm,
         "ltm_profile": ltm_profile,
     }
+
 
 def build_graph() -> StateGraph:
     """
@@ -100,38 +96,32 @@ def build_graph() -> StateGraph:
       → clarifier
       → validator
       → decomposer
-      → router ──────────────────────┐
-          │ (RAG)                     │ (WEB)
-          ↓                           ↓
-        rag_node              web_search_node
-          │                           │
-          └──────────┬────────────────┘
+      → router ─────────────────────────┐
+          │ (RAG)                        │ (WEB)
+          ↓                              ↓
+        rag_node                  web_search_node
+          │                              │
+          └──────────┬───────────────────┘
                      ↓
               freshness_check
                      ↓
-            answer_generator
-                     ↓
-            grounding_check
-             │              │
-          (HIGH)          (LOW)
-             ↓              ↓
-      stakes_assessor   fallback_node
-       │          │          │
-    (high)    (low)          │
-       ↓         ↓           │
-    hitl_node   memory ←─────┘
+            answer_generator  ←──────────────────┐
+                     ↓                            │
+            grounding_check                       │
+             │         │          │               │
+          (HIGH)  (web_fallback) (LOW)            │
+             ↓         ↓          ↓               │
+      stakes_assessor  │      fallback_node        │
+       │          │    │                           │
+    (high)     (low)   └── web_search_fallback ───┘
+       ↓          ↓         (only runs once)
+    hitl_node  memory_update_node
        ↓
-    memory_update
+    memory_update_node
        ↓
       END
-
-    Returns:
-        Compiled LangGraph StateGraph.
     """
 
-    # ---------------------------------------------------------
-    # Initialize graph with state schema
-    # ---------------------------------------------------------
     graph = StateGraph(AgentState)
 
     # ---------------------------------------------------------
@@ -146,13 +136,14 @@ def build_graph() -> StateGraph:
     graph.add_node("freshness_check", freshness_check_node)
     graph.add_node("answer_generator", answer_generator_node)
     graph.add_node("grounding_check", grounding_check_node)
+    graph.add_node("web_search_fallback", web_search_fallback_node)  # ✅ registered
     graph.add_node("fallback_node", fallback_node)
     graph.add_node("stakes_assessor", stakes_assessor_node)
     graph.add_node("hitl_node", hitl_node)
     graph.add_node("memory_update_node", memory_update_node)
 
     # ---------------------------------------------------------
-    # Define edges — linear flow
+    # Linear flow — start to router
     # ---------------------------------------------------------
     graph.add_edge(START, "clarifier")
     graph.add_edge("clarifier", "validator")
@@ -161,7 +152,6 @@ def build_graph() -> StateGraph:
 
     # ---------------------------------------------------------
     # Conditional edge after router
-    # Routes to rag_node or web_search_node
     # ---------------------------------------------------------
     graph.add_conditional_edges(
         "router",
@@ -177,29 +167,30 @@ def build_graph() -> StateGraph:
     # ---------------------------------------------------------
     graph.add_edge("rag_node", "freshness_check")
     graph.add_edge("web_search_node", "freshness_check")
-
-    # ---------------------------------------------------------
-    # Linear flow through generation and grounding
-    # ---------------------------------------------------------
     graph.add_edge("freshness_check", "answer_generator")
     graph.add_edge("answer_generator", "grounding_check")
 
     # ---------------------------------------------------------
     # Conditional edge after grounding check
-    # Routes to stakes_assessor or fallback_node
     # ---------------------------------------------------------
     graph.add_conditional_edges(
         "grounding_check",
         route_after_grounding,
         {
             "stakes_assessor": "stakes_assessor",
+            "web_search_fallback": "web_search_fallback",
             "fallback_node": "fallback_node",
         },
     )
 
     # ---------------------------------------------------------
+    # Web search fallback — goes to answer_generator
+    # then directly to stakes_assessor to avoid infinite loop
+    # ---------------------------------------------------------
+    graph.add_edge("web_search_fallback", "answer_generator")
+
+    # ---------------------------------------------------------
     # Conditional edge after stakes assessor
-    # Routes to hitl_node or memory_update_node
     # ---------------------------------------------------------
     graph.add_conditional_edges(
         "stakes_assessor",
@@ -211,24 +202,13 @@ def build_graph() -> StateGraph:
     )
 
     # ---------------------------------------------------------
-    # Both hitl and fallback converge at memory_update_node
+    # All paths converge at memory_update_node
     # ---------------------------------------------------------
     graph.add_edge("hitl_node", "memory_update_node")
     graph.add_edge("fallback_node", "memory_update_node")
-
-    # ---------------------------------------------------------
-    # End
-    # ---------------------------------------------------------
     graph.add_edge("memory_update_node", END)
 
-    # ---------------------------------------------------------
-    # Compile and return
-    # ---------------------------------------------------------
     return graph.compile()
 
 
-# ---------------------------------------------------------
-# Single compiled graph instance
-# imported by FastAPI routes
-# ---------------------------------------------------------
 app_graph = build_graph()

@@ -95,7 +95,7 @@ def send_chat_message(
         response = requests.post(
             f"{API_BASE_URL}/chat",
             json=payload,
-            timeout=120,
+            timeout=300,
         )
         return response.json()
     except requests.exceptions.ConnectionError:

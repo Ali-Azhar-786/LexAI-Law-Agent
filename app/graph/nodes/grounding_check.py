@@ -1,3 +1,5 @@
+from app.graph.state import AgentState
+
 def route_after_grounding(state: AgentState) -> str:
     """
     Conditional edge after grounding check.
@@ -30,3 +32,8 @@ def route_after_grounding(state: AgentState) -> str:
 
     # LOW confidence on pure WEB path — honest fallback
     return "fallback_node"
+
+    print(f"[GROUNDING ROUTE] Confidence     : {confidence}")
+    print(f"[GROUNDING ROUTE] Source mode    : {source_mode}")
+    print(f"[GROUNDING ROUTE] Already fell   : {already_fell_back}")
+    print(f"[GROUNDING ROUTE] Fallback flag  : {fallback_triggered}")

@@ -12,7 +12,7 @@ from app.graph.nodes.web_search_node import (
 from app.graph.nodes.freshness_check import freshness_check_node
 from app.graph.nodes.answer_generator import answer_generator_node
 from app.graph.nodes.grounding_check import (
-    grounding_check_node,
+    grounding_check_node,        # ✅ uncommented
     route_after_grounding,
 )
 from app.graph.nodes.fallback_node import fallback_node
@@ -89,38 +89,38 @@ def memory_update_node(state: AgentState) -> AgentState:
 
 def build_graph() -> StateGraph:
     """
-    Assembles and compiles the full LangGraph agent.
+        Assembles and compiles the full LangGraph agent.
 
-    Graph flow:
-    START
-      → clarifier
-      → validator
-      → decomposer
-      → router ─────────────────────────┐
-          │ (RAG)                        │ (WEB)
-          ↓                              ↓
-        rag_node                  web_search_node
-          │                              │
-          └──────────┬───────────────────┘
-                     ↓
-              freshness_check
-                     ↓
-            answer_generator  ←──────────────────┐
-                     ↓                            │
-            grounding_check                       │
-             │         │          │               │
-          (HIGH)  (web_fallback) (LOW)            │
-             ↓         ↓          ↓               │
-      stakes_assessor  │      fallback_node        │
-       │          │    │                           │
-    (high)     (low)   └── web_search_fallback ───┘
-       ↓          ↓         (only runs once)
-    hitl_node  memory_update_node
-       ↓
-    memory_update_node
-       ↓
-      END
-    """
+        Graph flow:
+        START
+        → clarifier
+        → validator
+        → decomposer
+        → router ─────────────────────────┐
+            │ (RAG)                        │ (WEB)
+            ↓                              ↓
+            rag_node                  web_search_node
+            │                              │
+            └──────────┬───────────────────┘
+                        ↓
+                freshness_check
+                        ↓
+                answer_generator  ←──────────────────┐
+                        ↓                            │
+                grounding_check                       │
+                │         │          │               │
+            (HIGH)  (web_fallback) (LOW)            │
+                ↓         ↓          ↓               │
+        stakes_assessor  │      fallback_node        │
+        │          │    │                           │
+        (high)     (low)   └── web_search_fallback ───┘
+        ↓          ↓         (only runs once)
+        hitl_node  memory_update_node
+        ↓
+        memory_update_node
+        ↓
+        END
+        """
 
     graph = StateGraph(AgentState)
 
@@ -135,15 +135,15 @@ def build_graph() -> StateGraph:
     graph.add_node("web_search_node", web_search_node)
     graph.add_node("freshness_check", freshness_check_node)
     graph.add_node("answer_generator", answer_generator_node)
-    graph.add_node("grounding_check", grounding_check_node)
-    graph.add_node("web_search_fallback", web_search_fallback_node)  # ✅ registered
+    graph.add_node("grounding_check", grounding_check_node)   # ✅ correct function
+    graph.add_node("web_search_fallback", web_search_fallback_node)
     graph.add_node("fallback_node", fallback_node)
     graph.add_node("stakes_assessor", stakes_assessor_node)
     graph.add_node("hitl_node", hitl_node)
     graph.add_node("memory_update_node", memory_update_node)
 
     # ---------------------------------------------------------
-    # Linear flow — start to router
+    # Linear flow
     # ---------------------------------------------------------
     graph.add_edge(START, "clarifier")
     graph.add_edge("clarifier", "validator")
@@ -172,10 +172,13 @@ def build_graph() -> StateGraph:
 
     # ---------------------------------------------------------
     # Conditional edge after grounding check
+    # route_after_grounding is the ROUTING FUNCTION
+    # grounding_check_node is the NODE that runs the LLM call
+    # These are two different things
     # ---------------------------------------------------------
     graph.add_conditional_edges(
         "grounding_check",
-        route_after_grounding,
+        route_after_grounding,          # ✅ routing function
         {
             "stakes_assessor": "stakes_assessor",
             "web_search_fallback": "web_search_fallback",
@@ -184,8 +187,9 @@ def build_graph() -> StateGraph:
     )
 
     # ---------------------------------------------------------
-    # Web search fallback — goes to answer_generator
-    # then directly to stakes_assessor to avoid infinite loop
+    # Web fallback loops back to answer generator only
+    # grounding check will then route to stakes_assessor
+    # since rag_fallback_to_web will be True
     # ---------------------------------------------------------
     graph.add_edge("web_search_fallback", "answer_generator")
 

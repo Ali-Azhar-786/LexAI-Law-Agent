@@ -40,18 +40,32 @@ def save_to_ltm(user_id: str, data: dict) -> None:
 
 
 def load_from_ltm(user_id: str) -> dict:
+    """
+    Loads memories for a user from Mem0.
+    Uses search instead of get_all to avoid API filter requirement.
+    """
+
     if not mem0_client:
         return {}
 
     try:
-        memories = mem0_client.get_all(user_id=user_id)
+        # Use search instead of get_all
+        # search works correctly in v1.0.7 without filter issues
+        results = mem0_client.search(
+            query="jurisdiction legal matter role",
+            user_id=user_id,
+        )
 
-        if not memories:
+        if not results:
             return {}
 
-        # v1.0.7 returns list directly
-        if isinstance(memories, dict):
-            memories = memories.get("results", [])
+        # Handle both list and dict formats
+        if isinstance(results, dict):
+            memories = results.get("results", [])
+        elif isinstance(results, list):
+            memories = results
+        else:
+            return {}
 
         profile = {}
         for memory in memories:

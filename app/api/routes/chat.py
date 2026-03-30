@@ -27,6 +27,7 @@ def build_initial_state(request: ChatRequest) -> dict:
         "jurisdiction": request.jurisdiction or "",
         "user_role": request.user_role or "",
         "matter_type": request.matter_type or "",
+        "is_legal_query": True,     
 
         # Document metadata — populated by validator node
         "doc_date": None,

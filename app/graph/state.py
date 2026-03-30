@@ -14,6 +14,12 @@ class AgentState(TypedDict):
     uploaded_doc_path: Optional[str]
 
     # ---------------------------------------------------------
+    # QUERY CLASSIFICATION
+    # Added before clarifier node
+    # ---------------------------------------------------------
+    is_legal_query: bool
+
+    # ---------------------------------------------------------
     # CLARIFICATION CONTEXT
     # Collected by Context Clarifier node
     # ---------------------------------------------------------

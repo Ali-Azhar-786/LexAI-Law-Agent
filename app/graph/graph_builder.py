@@ -23,6 +23,10 @@ from app.graph.nodes.stakes_assessor import (
 from app.graph.nodes.hitl_node import hitl_node
 from app.memory.long_term import save_to_ltm, load_from_ltm
 from app.memory.short_term import add_to_stm
+from app.graph.nodes.query_classifier import (
+    query_classifier_node,
+    route_after_classifier,
+)
 
 
 def memory_update_node(state: AgentState) -> AgentState:
@@ -127,6 +131,8 @@ def build_graph() -> StateGraph:
     # ---------------------------------------------------------
     # Register all nodes
     # ---------------------------------------------------------
+    # Register classifier node
+    graph.add_node("query_classifier", query_classifier_node)
     graph.add_node("clarifier", clarifier_node)
     graph.add_node("validator", validator_node)
     graph.add_node("decomposer", decomposer_node)
@@ -145,7 +151,18 @@ def build_graph() -> StateGraph:
     # ---------------------------------------------------------
     # Linear flow
     # ---------------------------------------------------------
-    graph.add_edge(START, "clarifier")
+        # Change START edge to go to classifier first
+    graph.add_edge(START, "query_classifier")
+
+    # Conditional edge after classifier
+    graph.add_conditional_edges(
+        "query_classifier",
+        route_after_classifier,
+        {
+            "clarifier": "clarifier",
+            "memory_update_node": "memory_update_node",
+        },
+    )
     graph.add_edge("clarifier", "validator")
     graph.add_edge("validator", "decomposer")
     graph.add_edge("decomposer", "router")

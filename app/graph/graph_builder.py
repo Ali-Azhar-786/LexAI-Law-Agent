@@ -97,9 +97,18 @@ def build_graph() -> StateGraph:
 
         Graph flow:
         START
-        → clarifier
+        → query_classifier ────────────────┐
+            │                              │
+            ↓                              ↓
+        → clarifier                  memory_update_node                              
+            |
+            ↓
         → validator
+            |
+            ↓
         → decomposer
+            |
+            ↓
         → router ─────────────────────────┐
             │ (RAG)                        │ (WEB)
             ↓                              ↓
